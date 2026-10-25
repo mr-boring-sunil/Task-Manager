@@ -3,14 +3,58 @@ const express = require("express");
 const os = require("os");
 const path = require("path");
 const si = require("systeminformation");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+
+const execFileAsync = promisify(execFile);
 
 const app = express();
 const PORT = 3000;
 
-// Serve the frontend from the public directory.
 app.use(express.static(path.join(__dirname, "public")));
 
-// Health-check endpoint.
+// Collect processes visible to Linux's ps command.
+// This includes processes owned by different users when visible
+// under the current user's Linux permissions.
+async function getAllProcesses() {
+  const { stdout } = await execFileAsync(
+    "ps",
+    [
+      "-eo",
+      "pid=,user=,pcpu=,pmem=,stat=,args="
+    ],
+    {
+      maxBuffer: 5 * 1024 * 1024,
+      timeout: 5000
+    }
+  );
+
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      // PID, USER, CPU%, MEM%, STATE, COMMAND
+      const match = line.match(
+        /^(\d+)\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+(\S+)\s*(.*)$/
+      );
+
+      if (!match) return null;
+
+      return {
+        pid: Number(match[1]),
+        user: match[2],
+        cpuPercent: Number(match[3]) || 0,
+        memoryPercent: Number(match[4]) || 0,
+        state: match[5],
+        command: match[6] || "unknown"
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.cpuPercent - a.cpuPercent);
+}
+
+// Basic health endpoint
 app.get("/api/pi/health", (req, res) => {
   res.json({
     status: "ok",
@@ -19,7 +63,7 @@ app.get("/api/pi/health", (req, res) => {
   });
 });
 
-// Live system-monitoring endpoint using Server-Sent Events.
+// Live system monitoring endpoint using Server-Sent Events (SSE)
 app.get("/api/pi/htop/live", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -37,12 +81,12 @@ app.get("/api/pi/htop/live", (req, res) => {
     busy = true;
 
     try {
-      const [cpu, memory, temperature, processData] =
+      const [cpu, memory, temperature, processes] =
         await Promise.all([
           si.currentLoad(),
           si.mem(),
           si.cpuTemperature(),
-          si.processes()
+          getAllProcesses()
         ]);
 
       if (!connected) return;
@@ -84,19 +128,11 @@ app.get("/api/pi/htop/live", (req, res) => {
             : 0
         },
 
-        processCount: processData.all,
+        // Number of processes visible to the ps command
+        processCount: processes.length,
 
-        processes: processData.list
-          .sort((a, b) => (b.cpu || 0) - (a.cpu || 0))
-          .slice(0, 30)
-          .map(process => ({
-            pid: process.pid,
-            user: process.user || "unknown",
-            cpuPercent: Number((process.cpu || 0).toFixed(1)),
-            memoryPercent: Number((process.mem || 0).toFixed(1)),
-            state: process.state || "unknown",
-            command: process.command || process.name || "unknown"
-          }))
+        // Return every process found, not just the first 30
+        processes
       };
 
       res.write(
@@ -117,13 +153,12 @@ app.get("/api/pi/htop/live", (req, res) => {
     }
   }
 
-  // Send the first reading immediately.
+  // Send the first reading immediately, then approximately every second
   sendMetrics();
 
-  // Send new readings approximately every second.
   const timer = setInterval(sendMetrics, 1000);
 
-  // Stop the timer when this browser connection closes.
+  // Stop collecting data when the browser disconnects
   res.on("close", () => {
     connected = false;
     clearInterval(timer);
