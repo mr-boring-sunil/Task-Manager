@@ -1,0 +1,935 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raspberry Pi Monitor</title>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1120;
+      --panel: #111b2e;
+      --card: #172338;
+      --border: #28364c;
+      --text: #e5edf8;
+      --muted: #94a3b8;
+      --blue: #38bdf8;
+      --green: #4ade80;
+      --orange: #fb923c;
+      --red: #f87171;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+      background: #0e1728;
+    }
+
+    .header-content {
+      max-width: 1400px;
+      margin: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      font-size: 25px;
+      margin: 0 0 6px;
+    }
+
+    h2 {
+      font-size: 16px;
+      margin: 0;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      background: var(--orange);
+      border-radius: 50%;
+    }
+
+    .status.online .dot {
+      background: var(--green);
+    }
+
+    .status.offline .dot {
+      background: var(--red);
+    }
+
+    main {
+      max-width: 1400px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    .section-title {
+      margin: 26px 0 14px;
+      font-size: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 19px;
+      min-width: 0;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .metric-value {
+      font-size: clamp(22px, 3vw, 31px);
+      font-weight: 700;
+      letter-spacing: -0.7px;
+      overflow-wrap: anywhere;
+    }
+
+    .metric-description {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 9px;
+    }
+
+    .progress {
+      height: 7px;
+      margin-top: 15px;
+      border-radius: 10px;
+      background: #27354b;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      transition: width 0.35s ease;
+      background: var(--blue);
+    }
+
+    .green-fill {
+      background: var(--green);
+    }
+
+    .orange-fill {
+      background: var(--orange);
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .chart-card {
+      min-width: 0;
+    }
+
+    .chart-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 5px;
+    }
+
+    .chart-value {
+      color: var(--blue);
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .ram-chart-value {
+      color: var(--green);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 210px;
+      margin-top: 16px;
+    }
+
+    .process-panel {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .process-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 19px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    input,
+    select,
+    button {
+      font: inherit;
+    }
+
+    input,
+    select {
+      background: #0b1425;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      outline: none;
+    }
+
+    input {
+      width: min(100%, 300px);
+    }
+
+    input:focus,
+    select:focus {
+      border-color: var(--blue);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 750px;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--muted);
+      background: #101a2b;
+      cursor: pointer;
+      user-select: none;
+      font-weight: 600;
+    }
+
+    th:hover {
+      color: var(--blue);
+    }
+
+    tbody tr:hover {
+      background: #19263b;
+    }
+
+    td.command {
+      max-width: 380px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cpu-number {
+      color: var(--blue);
+    }
+
+    .memory-number {
+      color: var(--green);
+    }
+
+    .badge {
+      display: inline-block;
+      background: #1e3a5f;
+      color: #93c5fd;
+      border-radius: 5px;
+      padding: 4px 7px;
+      font-size: 11px;
+    }
+
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 30px;
+    }
+
+    footer {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      padding: 25px;
+    }
+
+    @media (max-width: 1000px) {
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 650px) {
+      header {
+        padding: 18px;
+      }
+
+      main {
+        padding: 16px;
+      }
+
+      .grid,
+      .charts {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-value {
+        font-size: 27px;
+      }
+
+      canvas {
+        height: 190px;
+      }
+
+      .process-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      input,
+      select {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="header-content">
+      <div>
+        <h1>Raspberry Pi Monitor</h1>
+        <p class="muted">
+          Live system statistics and process monitoring
+        </p>
+      </div>
+
+      <div id="connectionStatus" class="status">
+        <span class="dot"></span>
+        <span id="connectionText">Connecting...</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <p class="muted">
+      Device: <strong id="hostname">Waiting for Raspberry Pi...</strong>
+      &nbsp;·&nbsp;
+      Uptime: <strong id="uptime">--</strong>
+      &nbsp;·&nbsp;
+      Last update: <strong id="lastUpdate">--</strong>
+    </p>
+
+    <h2 class="section-title">System Overview</h2>
+
+    <section class="grid">
+      <article class="card">
+        <p class="metric-label">CPU Usage</p>
+        <div class="metric-value" id="cpuValue">--%</div>
+        <div class="progress">
+          <div id="cpuBar" class="progress-fill"></div>
+        </div>
+        <p class="metric-description" id="cpuDescription">
+          Waiting for CPU data
+        </p>
+      </article>
+
+      <article class="card">
+        <p class="metric-label">Memory Usage</p>
+        <div class="metric-value" id="ramValue">--%</div>
+        <div class="progress">
+          <div id="ramBar" class="progress-fill green-fill"></div>
+        </div>
+        <p class="metric-description" id="ramDescription">
+          Waiting for memory data
+        </p>
+      </article>
+
+      <article class="card">
+        <p class="metric-label">CPU Temperature</p>
+        <div class="metric-value" id="temperatureValue">--</div>
+        <p class="metric-description">
+          Temperature reported by the system
+        </p>
+      </article>
+
+      <article class="card">
+        <p class="metric-label">Running Process Entries</p>
+        <div class="metric-value" id="processCount">--</div>
+        <p class="metric-description">
+          Total processes reported by the operating system
+        </p>
+      </article>
+
+      <article class="card">
+        <p class="metric-label">Available RAM</p>
+        <div class="metric-value" id="availableRam">--</div>
+        <p class="metric-description">Memory currently available</p>
+      </article>
+
+      <article class="card">
+        <p class="metric-label">Swap Usage</p>
+        <div class="metric-value" id="swapValue">--</div>
+        <div class="progress">
+          <div id="swapBar" class="progress-fill orange-fill"></div>
+        </div>
+        <p class="metric-description" id="swapDescription">
+          Virtual memory usage
+        </p>
+      </article>
+
+      <article class="card">
+        <p class="metric-label">CPU Cores</p>
+        <div class="metric-value" id="coreCount">--</div>
+        <p class="metric-description">Logical CPU cores detected</p>
+      </article>
+
+      <article class="card">
+        <p class="metric-label">Platform</p>
+        <div class="metric-value" id="platformValue">--</div>
+        <p class="metric-description">Operating system platform</p>
+      </article>
+    </section>
+
+    <h2 class="section-title">Performance History</h2>
+
+    <section class="charts">
+      <article class="card chart-card">
+        <div class="chart-heading">
+          <div>
+            <h2>CPU Usage</h2>
+            <p class="muted">Last 60 readings · approximately 1 minute</p>
+          </div>
+          <span id="cpuChartValue" class="chart-value">--%</span>
+        </div>
+        <canvas id="cpuChart" aria-label="CPU usage history chart"></canvas>
+      </article>
+
+      <article class="card chart-card">
+        <div class="chart-heading">
+          <div>
+            <h2>Memory Usage</h2>
+            <p class="muted">Last 60 readings · approximately 1 minute</p>
+          </div>
+          <span id="ramChartValue" class="chart-value ram-chart-value">--%</span>
+        </div>
+        <canvas id="ramChart" aria-label="Memory usage history chart"></canvas>
+      </article>
+    </section>
+
+    <h2 class="section-title">Processes</h2>
+
+    <section class="card process-panel">
+      <div class="process-toolbar">
+        <div>
+          <h2>Process List</h2>
+          <p class="muted" id="processSummary" style="margin-top: 6px">
+            Waiting for process data
+          </p>
+        </div>
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap">
+          <input
+            id="processSearch"
+            type="search"
+            placeholder="Search PID, user, command..."
+            aria-label="Search processes"
+          >
+
+          <select id="sortSelect" aria-label="Sort processes">
+            <option value="cpu">Sort by CPU</option>
+            <option value="memory">Sort by memory</option>
+            <option value="pid">Sort by PID</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="pid">PID ↕</th>
+              <th data-sort="user">USER ↕</th>
+              <th data-sort="command">COMMAND ↕</th>
+              <th data-sort="cpu">CPU % ↕</th>
+              <th data-sort="memory">MEMORY % ↕</th>
+              <th>STATE</th>
+            </tr>
+          </thead>
+
+          <tbody id="processTable">
+            <tr>
+              <td colspan="6" class="empty">Waiting for Raspberry Pi data...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Raspberry Pi live monitoring dashboard · Updates approximately every second
+  </footer>
+
+  <script>
+    "use strict";
+
+    const $ = (id) => document.getElementById(id);
+
+    const history = {
+      cpu: [],
+      ram: []
+    };
+
+    const MAX_POINTS = 60;
+
+    let latestProcesses = [];
+    let sortBy = "cpu";
+    let sortDirection = -1;
+    let eventSource = null;
+
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes) || bytes < 0) return "--";
+
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let value = bytes;
+      let unit = 0;
+
+      while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit++;
+      }
+
+      return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+    }
+
+    function formatUptime(seconds) {
+      if (!Number.isFinite(seconds)) return "--";
+
+      const total = Math.floor(seconds);
+      const days = Math.floor(total / 86400);
+      const hours = Math.floor((total % 86400) / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const secs = total % 60;
+
+      return `${days}d ${hours}h ${minutes}m ${secs}s`;
+    }
+
+    function setText(id, value) {
+      $(id).textContent = value;
+    }
+
+    function setProgress(id, percentage) {
+      $(id).style.width =
+        `${Math.max(0, Math.min(100, Number(percentage) || 0))}%`;
+    }
+
+    function setConnection(state, message) {
+      const status = $("connectionStatus");
+      status.classList.remove("online", "offline");
+
+      if (state === "online") {
+        status.classList.add("online");
+      } else if (state === "offline") {
+        status.classList.add("offline");
+      }
+
+      setText("connectionText", message);
+    }
+
+    function renderMetrics(data) {
+      const cpu = data.cpu || {};
+      const memory = data.memory || {};
+      const swap = data.swap || {};
+
+      const cpuUsage = Number(cpu.usagePercent) || 0;
+      const ramUsage = Number(memory.usagePercent) || 0;
+      const swapUsage = Number(swap.usagePercent) || 0;
+
+      setText("hostname", data.hostname || "Unknown");
+      setText("uptime", formatUptime(data.uptimeSeconds));
+      setText("lastUpdate", new Date().toLocaleTimeString());
+
+      setText("cpuValue", `${cpuUsage.toFixed(1)}%`);
+      setProgress("cpuBar", cpuUsage);
+      setText("cpuDescription", `${cpu.cores ?? "--"} logical cores`);
+
+      setText("ramValue", `${ramUsage.toFixed(1)}%`);
+      setProgress("ramBar", ramUsage);
+      setText(
+        "ramDescription",
+        `${formatBytes(memory.usedBytes)} used of ${formatBytes(memory.totalBytes)}`
+      );
+
+      const temp = cpu.temperatureC;
+      setText(
+        "temperatureValue",
+        typeof temp === "number" ? `${temp.toFixed(1)} °C` : "Unavailable"
+      );
+
+      setText("processCount", data.processCount ?? "--");
+      setText("availableRam", formatBytes(memory.availableBytes));
+
+      setText(
+        "swapValue",
+        swap.totalBytes > 0 ? `${swapUsage.toFixed(1)}%` : "Not configured"
+      );
+      setProgress("swapBar", swapUsage);
+      setText(
+        "swapDescription",
+        swap.totalBytes > 0
+          ? `${formatBytes(swap.usedBytes)} used of ${formatBytes(swap.totalBytes)}`
+          : "No swap space reported"
+      );
+
+      setText("coreCount", cpu.cores ?? "--");
+      setText("platformValue", data.platform || "--");
+
+      setText("cpuChartValue", `${cpuUsage.toFixed(1)}%`);
+      setText("ramChartValue", `${ramUsage.toFixed(1)}%`);
+
+      history.cpu.push(cpuUsage);
+      history.ram.push(ramUsage);
+
+      if (history.cpu.length > MAX_POINTS) history.cpu.shift();
+      if (history.ram.length > MAX_POINTS) history.ram.shift();
+
+      drawChart("cpuChart", history.cpu, "#38bdf8");
+      drawChart("ramChart", history.ram, "#4ade80");
+
+      latestProcesses = Array.isArray(data.processes) ? data.processes : [];
+      renderProcesses();
+    }
+
+    function drawChart(canvasId, values, lineColor) {
+      const canvas = $(canvasId);
+      const rect = canvas.getBoundingClientRect();
+
+      if (!rect.width || !rect.height) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const targetWidth = Math.round(rect.width * dpr);
+      const targetHeight = Math.round(rect.height * dpr);
+
+      if (
+        canvas.width !== targetWidth ||
+        canvas.height !== targetHeight
+      ) {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+      }
+
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const width = rect.width;
+      const height = rect.height;
+      const left = 34;
+      const right = 10;
+      const top = 12;
+      const bottom = 24;
+      const plotWidth = width - left - right;
+      const plotHeight = height - top - bottom;
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.font = "11px system-ui";
+      ctx.fillStyle = "#94a3b8";
+      ctx.strokeStyle = "#29364b";
+      ctx.lineWidth = 1;
+
+      for (let percent = 0; percent <= 100; percent += 25) {
+        const y = top + plotHeight * (1 - percent / 100);
+
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(width - right, y);
+        ctx.stroke();
+
+        ctx.fillText(`${percent}%`, 0, y + 4);
+      }
+
+      ctx.fillStyle = "#94a3b8";
+      ctx.fillText("Oldest", left, height - 5);
+      ctx.fillText("Now", width - right - 24, height - 5);
+
+      if (!values.length) return;
+
+      const points = values.map((value, index) => {
+        const x = values.length === 1
+          ? left + plotWidth
+          : left + (index / (MAX_POINTS - 1)) * plotWidth;
+
+        const bounded = Math.max(0, Math.min(100, value));
+        const y = top + plotHeight * (1 - bounded / 100);
+
+        return { x, y };
+      });
+
+      // Filled area below the graph line.
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, top + plotHeight);
+
+      for (const point of points) {
+        ctx.lineTo(point.x, point.y);
+      }
+
+      ctx.lineTo(points[points.length - 1].x, top + plotHeight);
+      ctx.closePath();
+
+      ctx.globalAlpha = 0.13;
+      ctx.fillStyle = lineColor;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Draw the graph line.
+      ctx.beginPath();
+
+      points.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.stroke();
+
+      // Highlight the newest reading.
+      const last = points[points.length - 1];
+
+      ctx.beginPath();
+      ctx.arc(last.x, last.y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = lineColor;
+      ctx.fill();
+    }
+
+    function renderProcesses() {
+      const search = $("processSearch").value.trim().toLowerCase();
+      const tbody = $("processTable");
+
+      const filtered = latestProcesses.filter((process) => {
+        const text = [
+          process.pid,
+          process.user,
+          process.command,
+          process.state
+        ].join(" ").toLowerCase();
+
+        return text.includes(search);
+      });
+
+      filtered.sort((a, b) => {
+        let left;
+        let right;
+
+        switch (sortBy) {
+          case "pid":
+            left = Number(a.pid) || 0;
+            right = Number(b.pid) || 0;
+            break;
+          case "memory":
+            left = Number(a.memoryPercent) || 0;
+            right = Number(b.memoryPercent) || 0;
+            break;
+          case "user":
+            left = a.user || "";
+            right = b.user || "";
+            return left.localeCompare(right) * sortDirection;
+          case "command":
+            left = a.command || "";
+            right = b.command || "";
+            return left.localeCompare(right) * sortDirection;
+          case "cpu":
+          default:
+            left = Number(a.cpuPercent) || 0;
+            right = Number(b.cpuPercent) || 0;
+        }
+
+        return (left - right) * sortDirection;
+      });
+
+      setText(
+        "processSummary",
+        `Showing ${filtered.length} of ${latestProcesses.length} received processes`
+      );
+
+      if (!filtered.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="6" class="empty">No matching processes</td></tr>';
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+
+      for (const process of filtered) {
+        const tr = document.createElement("tr");
+
+        const cells = [
+          { value: process.pid ?? "--" },
+          { value: process.user || "unknown" },
+          { value: process.command || "unknown", className: "command" },
+          {
+            value: `${(Number(process.cpuPercent) || 0).toFixed(1)}%`,
+            className: "cpu-number"
+          },
+          {
+            value: `${(Number(process.memoryPercent) || 0).toFixed(1)}%`,
+            className: "memory-number"
+          }
+        ];
+
+        for (const cell of cells) {
+          const td = document.createElement("td");
+          td.textContent = String(cell.value);
+          if (cell.className) td.className = cell.className;
+          if (cell.className === "command") {
+            td.title = String(cell.value);
+          }
+          tr.appendChild(td);
+        }
+
+        const stateCell = document.createElement("td");
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = process.state || "unknown";
+        stateCell.appendChild(badge);
+        tr.appendChild(stateCell);
+
+        fragment.appendChild(tr);
+      }
+
+      tbody.replaceChildren(fragment);
+    }
+
+    function connect() {
+      if (eventSource) eventSource.close();
+
+      setConnection("connecting", "Connecting...");
+
+      eventSource = new EventSource("/api/pi/htop/live");
+
+      eventSource.addEventListener("connected", () => {
+        setConnection("online", "Live");
+      });
+
+      eventSource.addEventListener("metrics", (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          renderMetrics(data);
+          setConnection("online", "Live");
+        } catch (error) {
+          console.error("Invalid metrics data:", error);
+        }
+      });
+
+      eventSource.addEventListener("metrics-error", (event) => {
+        try {
+          const error = JSON.parse(event.data);
+          console.error("Metrics error:", error.message);
+        } catch {
+          console.error("Metrics collection failed.");
+        }
+      });
+
+      eventSource.onerror = () => {
+        setConnection("offline", "Reconnecting...");
+      };
+    }
+
+    $("processSearch").addEventListener("input", renderProcesses);
+
+    $("sortSelect").addEventListener("change", (event) => {
+      sortBy = event.target.value;
+      sortDirection = -1;
+      renderProcesses();
+    });
+
+    document.querySelectorAll("th[data-sort]").forEach((header) => {
+      header.addEventListener("click", () => {
+        const selectedSort = header.dataset.sort;
+
+        if (sortBy === selectedSort) {
+          sortDirection *= -1;
+        } else {
+          sortBy = selectedSort;
+          sortDirection = -1;
+        }
+
+        $("sortSelect").value =
+          ["cpu", "memory", "pid"].includes(sortBy) ? sortBy : "cpu";
+
+        renderProcesses();
+      });
+    });
+
+    let resizeTimer;
+
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+
+      resizeTimer = setTimeout(() => {
+        drawChart("cpuChart", history.cpu, "#38bdf8");
+        drawChart("ramChart", history.ram, "#4ade80");
+      }, 100);
+    });
+
+    connect();
+  </script>
+</body>
+</html>
